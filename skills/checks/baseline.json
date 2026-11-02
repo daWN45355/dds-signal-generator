@@ -1,0 +1,36 @@
+{
+  "timing": {
+    "WNS": 3.089,
+    "TNS": 0.0,
+    "WHS": 0.121,
+    "THS": 0.0
+  },
+  "util": {
+    "LUT": {
+      "used": 1003,
+      "avail": 17600,
+      "pct": 5.7
+    },
+    "FF": {
+      "used": 677,
+      "avail": 35200,
+      "pct": 1.92
+    },
+    "BRAM": {
+      "used": 1,
+      "avail": 60,
+      "pct": 1.67
+    },
+    "DSP": {
+      "used": 6,
+      "avail": 80,
+      "pct": 7.5
+    },
+    "IOB": {
+      "used": 11,
+      "avail": 100,
+      "pct": 11.0
+    }
+  },
+  "source": "impl_1"
+}

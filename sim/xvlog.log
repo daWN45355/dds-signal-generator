@@ -1,0 +1,4 @@
+INFO: [VRFC 10-2263] Analyzing Verilog file "D:/fpga/deliver/code/dds_project/src/cmd_parser.v" into library work
+INFO: [VRFC 10-311] analyzing module cmd_parser
+INFO: [VRFC 10-2263] Analyzing Verilog file "D:/fpga/deliver/code/dds_project/sim/tb_cmd.v" into library work
+INFO: [VRFC 10-311] analyzing module tb_cmd

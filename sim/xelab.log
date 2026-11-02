@@ -1,0 +1,12 @@
+Vivado Simulator 2017.4
+Copyright 1986-1999, 2001-2016 Xilinx, Inc. All Rights Reserved.
+Running: D:/vivad/Vivado/2017.4/bin/unwrapped/win64.o/xelab.exe -debug typical -s tbsim tb_cmd 
+Multi-threading is on. Using 18 slave threads.
+Starting static elaboration
+Completed static elaboration
+Starting simulation data flow analysis
+Completed simulation data flow analysis
+Time Resolution for simulation is 1ps
+Compiling module work.cmd_parser
+Compiling module work.tb_cmd
+Built simulation snapshot tbsim

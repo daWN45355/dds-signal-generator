@@ -1,0 +1,24 @@
+# 统一换行符策略，避免克隆到不同平台后脚本失效
+* text=auto
+
+# 二进制：禁止任何转换
+*.bit binary
+*.dcp binary
+*.pb binary
+*.wdb binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary
+*.zip binary
+
+# Windows 脚本必须保持 CRLF，否则 cmd 解析出错
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# 工具链文本文件用 LF
+*.tcl text eol=lf
+*.xdc text eol=lf
+*.v   text eol=lf
+*.py  text eol=lf
+*.md  text eol=lf

@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>波形实时监测与调控控制台</title>
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --line:#d9dbe0; --txt:#222; --mut:#777;
+          --blue:#185FA5; --amber:#B8740F; --green:#1D9E75; --red:#C0392B; }
+  * { box-sizing:border-box; margin:0; }
+  body { font-family:"Microsoft YaHei",sans-serif; background:var(--bg); color:var(--txt); padding:14px; }
+  .bar { display:flex; align-items:center; gap:12px; background:var(--card); border:1px solid var(--line);
+         border-radius:10px; padding:10px 14px; margin-bottom:12px; flex-wrap:wrap; }
+  .bar h1 { font-size:16px; font-weight:500; margin-right:8px; }
+  .dot { width:10px; height:10px; border-radius:50%; background:#bbb; }
+  .dot.on { background:var(--green); } .dot.off { background:var(--red); }
+  select, button { font:inherit; padding:4px 10px; border:1px solid var(--line);
+                   border-radius:6px; background:#fff; cursor:pointer; }
+  button:hover { background:#eef2f7; }
+  .grid { display:grid; grid-template-columns:320px 1fr; gap:12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; }
+  .card h2 { font-size:14px; font-weight:500; margin-bottom:8px; color:var(--blue); }
+  .row { display:flex; align-items:center; gap:8px; margin:8px 0; }
+  .row label { width:64px; font-size:12px; color:var(--mut); flex:none; }
+  .row input[type=range] { flex:1; }
+  .row .val { width:78px; font-size:12px; font-variant-numeric:tabular-nums; text-align:right; }
+  .waves { display:flex; gap:6px; flex-wrap:wrap; }
+  .waves button { flex:1; padding:5px 0; border-radius:6px; min-width:52px; }
+  .waves button.sel { background:var(--blue); color:#fff; border-color:var(--blue); }
+  canvas { width:100%; display:block; background:#fff; border:1px solid var(--line); border-radius:8px; }
+  #log { font-family:Consolas,monospace; font-size:11px; height:110px; overflow-y:auto;
+         background:#fafafa; border:1px solid var(--line); border-radius:8px; padding:6px; }
+  #bstat { font-family:Consolas,monospace; font-size:13px; background:#0f2233; color:#7fd4a0;
+           border-radius:8px; padding:8px 10px; letter-spacing:.5px; }
+  .kf { display:flex; gap:6px; margin-top:6px; }
+  .kf span { flex:1; text-align:center; font-size:11px; padding:3px 0; border-radius:5px;
+             background:#eee; color:#999; }
+  .kf span.on { background:var(--amber); color:#fff; }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <h1>波形实时监测与调控</h1>
+  <span id="sdot" class="dot"></span><span id="stxt" style="font-size:13px;color:var(--mut)">串口未连接</span>
+  <select id="portSel" style="min-width:140px"></select>
+  <button onclick="serialConnect()">连接串口</button>
+  <button onclick="serialDisconnect()">断开</button>
+  <button onclick="setParam('demo', 1)">恢复演示状态</button>
+  <button onclick="resync()" title="重写 W4 并把网页轮换时钟归零，尝试与板卡轮换对齐">同步轮换时钟</button>
+  <span style="margin-left:auto;font-size:12px;color:var(--mut)" id="clock"></span>
+</div>
+
+<div class="grid">
+  <div>
+    <div class="card">
+      <h2>波形参数（即时下发 · 无毛刺切换）</h2>
+      <div class="waves" id="wbtns">
+        <button data-v="4">自动</button><button data-v="0">正弦</button>
+        <button data-v="1">方波</button><button data-v="2">三角</button>
+        <button data-v="3">锯齿</button>
+      </div>
+      <div class="row"><label>频率 Hz</label>
+        <input type="range" id="pf" min="100" max="20000" step="100" value="1000">
+        <span class="val" id="pfv">1000 Hz</span></div>
+      <div class="row"><label>相位差 °</label>
+        <input type="range" id="pp" min="0" max="359" step="1" value="90">
+        <span class="val" id="ppv">90 °</span></div>
+      <div class="row"><label>幅度 %</label>
+        <input type="range" id="pa" min="1" max="100" step="1" value="100">
+        <span class="val" id="pav">100 %</span></div>
+      <div class="row"><label>加减方向</label>
+        <button id="dirBtn" onclick="toggleDir()">方向：+</button>
+        <span style="font-size:11px;color:var(--mut)">决定板上 S2/S3 的加/减</span></div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h2>板卡实时状态（每秒自动回读）</h2>
+      <div id="bstat">未连接</div>
+      <div class="kf">
+        <span id="k0">S1 波形</span><span id="k1">S2 频率</span>
+        <span id="k2">S3 相位</span><span id="k3">S4 方向</span>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h2>指令日志</h2>
+      <div id="log"></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>实时波形预览（AO 蓝 · BO 橙，随板卡参数同步）</h2>
+      <canvas id="wave" width="900" height="240"></canvas>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <h2>传感器数据（板 → CH340 → 网页 · 协议 D,&lt;值1&gt;[,&lt;值2&gt;]）</h2>
+      <canvas id="sdata" width="900" height="180"></canvas>
+      <div class="row" style="margin-top:6px">
+        <span style="font-size:12px;color:var(--mut)" id="sdstat">未收到数据</span>
+        <button style="margin-left:auto" onclick="clearData()">清空</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <h2>频率历史（最近 180 次变更）</h2>
+      <canvas id="hist" width="900" height="140"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const WAVE_NAMES = ['正弦','方波','三角','锯齿','自动轮换'];
+let S = null, drag = {}, dirPlus = true;
+
+// ---------- 轮询状态 ----------
+async function poll() {
+  try {
+    const r = await fetch('/api/state'); S = await r.json();
+    renderStatus(); syncInputs(); renderLog();
+  } catch (e) {}
+}
+setInterval(poll, 300); poll();
+
+function renderStatus() {
+  const c = S.state.serial.connected, b = S.state.board;
+  $('sdot').className = 'dot ' + (c ? 'on' : 'off');
+  $('stxt').textContent = c ? ('已连接 ' + S.state.serial.port + (b.online ? ' · 板卡在线' : ' · 板卡无响应'))
+                            : '模拟模式：未连接串口（命令仅记录）';
+  $('bstat').textContent = b.raw || (c ? '等待板卡回传…' : '未连接');
+  for (let i = 0; i < 4; i++)
+    $('k' + i).className = (b.K && b.K[i] === '1') ? 'on' : '';
+}
+function renderLog() {
+  $('log').innerHTML = S.log.slice().reverse()
+    .map(l => `<div>${l.t} &nbsp;${l.cmd}</div>`).join('');
+}
+
+// ---------- 控件同步 ----------
+function syncInputs() {
+  const b = S.state.board;
+  if (!drag.f) { $('pf').value = b.F; $('pfv').textContent = b.F + ' Hz'; }
+  if (!drag.p) { $('pp').value = b.P; $('ppv').textContent = b.P + ' °'; }
+  if (!drag.a) { $('pa').value = b.A; $('pav').textContent = b.A + ' %'; }
+  [...$('wbtns').children].forEach(x => x.classList.toggle('sel', +x.dataset.v === b.W));
+  dirPlus = b.D !== '-';
+  $('dirBtn').textContent = '方向：' + b.D;
+}
+$('wbtns').addEventListener('click', e => {
+  if (e.target.dataset.v !== undefined) setParam('wave', +e.target.dataset.v);
+});
+[['pf','freq'],['pp','phase'],['pa','amp']].forEach(([id, key]) => {
+  $(id).addEventListener('input', () => drag[key[0]] = true);
+  $(id).addEventListener('change', () => {
+    drag[key[0]] = false; setParam(key, +$(id).value);
+  });
+  $(id).addEventListener('input', () => {
+    const unit = key === 'freq' ? ' Hz' : (key === 'phase' ? ' °' : ' %');
+    $(id + 'v').textContent = $(id).value + unit;
+  });
+});
+function toggleDir() { dirPlus = !dirPlus; setParam('dir', dirPlus ? 0 : 1); }
+function resync() { autoClock = 0; setParam('resync', 1); }
+
+// ---------- 参数下发 ----------
+async function setParam(param, value) {
+  try { await fetch('/api/set', { method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({param, value}) }); } catch (e) {}
+  poll();
+}
+
+// ---------- 串口 ----------
+async function refreshPorts() {
+  try {
+    const r = await fetch('/api/ports'); const ps = await r.json();
+    $('portSel').innerHTML = ps.map(p =>
+      `<option value="${p.device}">${p.device} — ${p.desc}</option>`).join('') ||
+      '<option value="">未检测到串口</option>';
+  } catch (e) {}
+}
+refreshPorts(); setInterval(refreshPorts, 3000);
+async function serialConnect() {
+  const r = await fetch('/api/serial', { method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({action:'connect', port: $('portSel').value}) });
+  const j = await r.json(); poll();
+  if (!j.ok) alert('串口连接失败：' + (j.serial.error || '未知错误'));
+}
+async function serialDisconnect() {
+  await fetch('/api/serial', { method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({action:'disconnect'}) }); poll();
+}
+
+// ---------- 实时波形动画（AO 蓝 + BO 橙） ----------
+const wc = $('wave').getContext('2d');
+let lastT = performance.now(), autoClock = 0;
+function drawWave(now) {
+  const dt = Math.min((now - lastT) / 1000, 0.1); lastT = now;
+  if (!S) { requestAnimationFrame(drawWave); return; }
+  const b = S.state.board;
+  const mode = b.W === 4 ? Math.floor(autoClock / 2) % 4 : b.W;   // 自动轮换每 2 秒
+  autoClock = (autoClock + dt) % 8;
+  const amp = b.A / 100 * 4.095, phOff = b.P * Math.PI / 180;
+
+  const W = wc.canvas.width, H = wc.canvas.height, pad = 8;
+  wc.clearRect(0, 0, W, H);
+  wc.font = '11px Consolas';
+  wc.strokeStyle = '#eceef1'; wc.lineWidth = 1;
+  for (let i = 1; i < 10; i++) { wc.beginPath(); wc.moveTo(pad+i*(W-2*pad)/10, pad);
+    wc.lineTo(pad+i*(W-2*pad)/10, H-pad); wc.stroke(); }
+  for (let i = 1; i < 5; i++) { wc.beginPath(); wc.moveTo(pad, pad+i*(H-2*pad)/5);
+    wc.lineTo(W-pad, pad+i*(H-2*pad)/5); wc.stroke(); }
+
+  const draw = (color, off) => {
+    const N = 720, cyc = 3;                       // 固定显示 3 个周期
+    wc.beginPath(); wc.strokeStyle = color; wc.lineWidth = 1.6;
+    for (let i = 0; i <= N; i++) {
+      const u = i / N, ph2 = 2*Math.PI*u*cyc + off;
+      let w;
+      if (mode === 0) w = Math.sin(ph2);
+      else if (mode === 1) w = Math.sin(ph2) >= 0 ? 1 : -1;
+      else if (mode === 2) { const m = ((ph2/(2*Math.PI))%1+1)%1; w = m<0.5 ? 4*m-1 : 3-4*m; }
+      else w = 2*(((ph2/(2*Math.PI))%1+1)%1) - 1;
+      const x = pad + u*(W-2*pad);
+      const y = H - pad - ((amp/2)*(w+1) + 0.05) / 4.4 * (H - 2*pad);
+      i === 0 ? wc.moveTo(x, y) : wc.lineTo(x, y);
+    }
+    wc.stroke();
+  };
+  draw('#185FA5', 0);
+  draw('#B8740F', phOff);
+  wc.fillStyle = '#888'; wc.fillText(
+    `AO: ${WAVE_NAMES[b.W === 4 ? mode : b.W]} ${b.F}Hz ${b.A}%    BO: 相位差 ${b.P}°    模式: ${WAVE_NAMES[b.W]}` +
+    (b.W === 4 ? '   [自动轮换相位为示意·点"同步轮换时钟"对齐]' : ''),
+    pad + 4, pad + 12);
+  requestAnimationFrame(drawWave);
+}
+requestAnimationFrame(drawWave);
+
+// ---------- 传感器数据（上行，10Hz） ----------
+const sc = $('sdata').getContext('2d');
+async function pollData() {
+  try {
+    const r = await fetch('/api/data'); const j = await r.json();
+    $('sdstat').textContent = j.data.length
+      ? `已接收 ${j.stats.lines} 行 / ${j.stats.bytes} 字节 | 缓冲 ${j.data.length} 点`
+      : '未收到数据（协议：板子每行发 D,<值1>[,<值2>]）';
+    drawSensor(j.data);
+  } catch (e) {}
+}
+setInterval(pollData, 100);
+async function clearData() { await fetch('/api/dataclear', {method:'POST'}); pollData(); }
+function drawSensor(d) {
+  const W = sc.canvas.width, H = sc.canvas.height, pad = 22;
+  sc.clearRect(0, 0, W, H);
+  if (d.length < 2) return;
+  const vals = d.flatMap(p => p.v2 !== null && p.v2 !== undefined ? [p.v1, p.v2] : [p.v1]);
+  let hi = Math.max(...vals, 0.001), lo = Math.min(...vals, 0);
+  if (hi - lo < 1e-6) { hi += 0.5; lo -= 0.5; }
+  const m = (hi - lo) * 0.08; hi += m; lo -= m;
+  const Y = v => H - pad - (v - lo) / (hi - lo) * (H - 2 * pad);
+  sc.font = '11px Consolas'; sc.fillStyle = '#888';
+  sc.fillText(hi.toFixed(2), 2, 12); sc.fillText(lo.toFixed(2), 2, H - 6);
+  const draw = (key, color) => {
+    sc.beginPath(); sc.strokeStyle = color; sc.lineWidth = 1.4;
+    let started = false;
+    d.forEach((p, i) => {
+      if (p[key] === null || p[key] === undefined) return;
+      const x = pad + i / (d.length - 1) * (W - 2 * pad);
+      started ? sc.lineTo(x, Y(p[key])) : (sc.moveTo(x, Y(p[key])), started = true);
+    });
+    sc.stroke();
+  };
+  draw('v1', '#185FA5'); draw('v2', '#B8740F');
+  sc.fillStyle = '#185FA5'; sc.fillText('— 通道1', W - 130, 14);
+  if (d.some(p => p.v2 !== null && p.v2 !== undefined)) {
+    sc.fillStyle = '#B8740F'; sc.fillText('— 通道2', W - 60, 14);
+  }
+}
+
+// ---------- 频率历史 ----------
+const hc = $('hist').getContext('2d');
+setInterval(() => {
+  if (!S) return;
+  const h = S.hist; if (h.length < 2) return;
+  const W = hc.canvas.width, H = hc.canvas.height, pad = 24;
+  hc.clearRect(0, 0, W, H);
+  const fMax = Math.max(20000, ...h.map(p => p.f));
+  hc.font = '11px Consolas'; hc.fillStyle = '#888';
+  hc.fillText(fMax + ' Hz', 2, 12); hc.fillText('0 Hz', 2, H - 6);
+  hc.beginPath(); hc.strokeStyle = '#185FA5'; hc.lineWidth = 1.4;
+  h.forEach((p, i) => {
+    const x = pad + i / (h.length - 1) * (W - 2*pad);
+    const y = H - pad - (p.f / fMax) * (H - 2*pad);
+    i === 0 ? hc.moveTo(x, y) : hc.lineTo(x, y);
+  });
+  hc.stroke();
+}, 500);
+
+setInterval(() => { $('clock').textContent = new Date().toLocaleTimeString(); }, 1000);
+</script>
+</body>
+</html>

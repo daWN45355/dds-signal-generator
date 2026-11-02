@@ -1,0 +1,30 @@
+# ---- Vivado 工程产物 ----
+# build/build.tcl 会在 build/proj/ 下生成整套工程，体积几十 MB，不入库。
+# 克隆后用 build/build.bat 一条命令即可重建。
+build/proj/
+*.Xil/
+.Xil/
+vivado*.log
+vivado*.jou
+
+# ---- Vivado 仿真临时文件 ----
+# 只排编译缓存与波形库，xsim.log / xvlog.log / xelab.log 作为仿真证据保留入库。
+sim/xsim.dir/
+sim/*.wdb
+sim/webtalk*
+sim/*.pb
+sim/*.jou
+sim/*.backup.*
+
+# ---- 不可忽略的归档证据 ----
+# data/impl_1/ 下是交付时归档的原始报告，必须保留，因此不对 *.rpt 做全局忽略。
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# ---- 系统 ----
+Thumbs.db
+desktop.ini
+.DS_Store
